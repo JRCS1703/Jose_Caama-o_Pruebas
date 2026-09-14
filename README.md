@@ -2,48 +2,51 @@
 
 **Estudiante:** José Caamaño Sepúlveda  
 **Asignatura:** Automatización de Pruebas  
-**Tecnologías:** Java 17, Maven, JUnit 5, Selenium, TestNG, GitHub Actions, Jenkins, Kubernetes (manifiestos), Bash
+**Tecnologías:** Java 17, Maven, JUnit 5, Selenium, TestNG, GitHub Actions, Jenkins, Bash y Kubernetes (manifiestos)
 
 ## 1. Descripción del proyecto
 
-Este proyecto reúne en un único repositorio las evidencias técnicas solicitadas para las tres actividades del TA_7. La solución demuestra control de versiones, gestión de dependencias, automatización de build y pruebas, pipeline de integración continua y un pipeline de despliegue con acceptance tests y estrategia Canary con rollback.
+Este repositorio implementa los entregables de las tres actividades del TA_7: control de versiones y flujo de ramas, gestión de dependencias Maven, pruebas automatizadas, integración continua, acceptance tests, despliegue de staging, Canary y validación de rollback.
 
-La estructura está pensada para que los mismos artefactos puedan ejecutarse tanto localmente como dentro de CI/CD.
+El pipeline de GitHub Actions genera evidencia real de ejecución. No se utilizan capturas simuladas como evidencia final.
 
-## 2. Estrategia de pruebas implementada
+## 2. Estrategia de pruebas
 
-La estrategia se divide en tres niveles:
+1. **Pruebas unitarias:** JUnit 5 valida lógica aislada mediante `CalculatorTest`.
+2. **Acceptance tests:** Maven Failsafe ejecuta `HealthCheckIT` contra un proceso desplegado en el runner de GitHub Actions.
+3. **Validación de despliegue:** el workflow levanta un ambiente stable, luego un proceso Canary y finalmente ejecuta un rollback verificable.
 
-1. **Pruebas unitarias:** JUnit 5 valida lógica aislada, rápida y determinista.
-2. **Pruebas de aceptación:** Maven Failsafe ejecuta pruebas `*IT.java` contra un ambiente de staging mediante `BASE_URL`.
-3. **Validación de despliegue:** el pipeline verifica el ambiente antes de promover la versión Canary. Si las métricas se degradan, se ejecuta rollback.
+El `pom.xml` declara JUnit 5, Selenium 4 y TestNG 7, además de Surefire y Failsafe.
 
-Dependencias declaradas en `pom.xml`:
+## 3. Estrategia Git
 
-- JUnit 5
-- Selenium 4
-- TestNG 7
+Se utiliza GitFlow simplificado:
 
-## 3. Flujo Git
-
-Se documenta un **GitFlow simplificado**:
-
-- `main`: versión estable.
+- `main`: versión estable y liberable.
 - `develop`: integración.
-- `feature/*`: nuevas funcionalidades o pruebas.
-- `release/*`: preparación de release.
+- `feature/*`: desarrollo de funcionalidades y automatización.
+- `release/*`: preparación de versiones.
 - `hotfix/*`: correcciones urgentes.
 
-Ver: `docs/git-flow.md`.
+Flujo aplicado:
 
-## 4. Cómo ejecutar las pruebas
+```text
+feature/pruebas-automatizadas
+        ↓ Pull Request
+develop
+        ↓ Pull Request
+main
+```
+
+Ver `docs/git-flow.md`.
+
+## 4. Ejecución local
 
 ### Requisitos
 
 - JDK 17
 - Maven 3.9+
 - Git
-- Opcional: Docker/Kubernetes para un despliegue real
 
 ### Pruebas unitarias
 
@@ -51,42 +54,51 @@ Ver: `docs/git-flow.md`.
 mvn clean test
 ```
 
-### Pruebas de aceptación
+### Preparar staging local
 
 ```bash
-export BASE_URL=http://staging.example.local
-mvn verify
+mvn -DskipTests package
+bash scripts/deploy-staging.sh
 ```
 
-En Windows PowerShell:
+### Acceptance tests
+
+```bash
+export BASE_URL=http://127.0.0.1:8080
+mvn failsafe:integration-test failsafe:verify
+```
+
+En PowerShell:
 
 ```powershell
-$env:BASE_URL="http://staging.example.local"
-mvn verify
+$env:BASE_URL="http://127.0.0.1:8080"
+mvn failsafe:integration-test failsafe:verify
 ```
 
-## 5. Pipeline CI
+## 5. Pipeline CI/CD
 
-Archivo principal:
+Pipeline principal:
 
 ```text
 .github/workflows/ci-cd.yml
 ```
 
-También se incluye:
+Pipeline equivalente adicional:
 
 ```text
 Jenkinsfile
 ```
 
-El pipeline contiene los stages:
+Flujo automatizado:
 
 ```text
 Checkout
   ↓
-Build
+Setup Java 17
   ↓
-Unit Tests
+Build + Unit Tests
+  ↓
+Publish Surefire Reports
   ↓
 Package
   ↓
@@ -94,24 +106,30 @@ Deploy Staging
   ↓
 Acceptance Tests
   ↓
-Canary Deploy
+Canary
   ↓
-Promote / Rollback
+Rollback Validation
 ```
 
-GitHub Actions ejecuta build y pruebas en `push` y `pull_request`. Los reportes Surefire y logs de despliegue se publican como artifacts.
+## 6. Despliegue y rollback
 
-## 6. Pipeline de despliegue
+### Staging
 
-Scripts:
+`scripts/deploy-staging.sh` inicia una instancia real de `HealthServer` en el puerto 8080 del runner y valida su endpoint `/actuator/health`.
 
-```text
-scripts/deploy-staging.sh
-scripts/deploy-canary.sh
-scripts/rollback.sh
-```
+### Canary
 
-Manifiestos:
+`scripts/deploy-canary.sh` inicia una segunda instancia en el puerto 8081 y valida su disponibilidad antes de considerar la versión saludable.
+
+### Rollback
+
+`scripts/rollback.sh` detiene la instancia Canary, comprueba que la instancia stable sigue disponible y verifica que el puerto Canary ya no responda.
+
+Este procedimiento se ejecuta en GitHub Actions cuando hay un push a `main`, generando logs descargables como artifact.
+
+## 7. Kubernetes
+
+Se incluyen manifiestos de referencia:
 
 ```text
 k8s/deployment-stable.yaml
@@ -119,71 +137,77 @@ k8s/deployment-canary.yaml
 k8s/service.yaml
 ```
 
-### Despliegue de staging
+Estos manifiestos documentan cómo trasladar la estrategia a un clúster Kubernetes real. La evidencia automática del repositorio se basa en procesos reales ejecutados en el runner de GitHub Actions, mientras que Kubernetes queda como configuración preparada para un entorno con clúster disponible.
 
-```bash
-bash scripts/deploy-staging.sh
-```
+## 8. Evidencias reales
 
-### Canary
+Las evidencias se obtienen desde **GitHub → Actions → CI-CD TA7**.
 
-```bash
-bash scripts/deploy-canary.sh
-```
+### Build + pruebas
 
-La estrategia propone comenzar con 10% del tráfico y aumentar a 25%, 50% y 100% solo si las métricas se mantienen dentro del umbral.
-
-### Rollback
-
-```bash
-bash scripts/rollback.sh
-```
-
-El rollback retira la versión Canary y devuelve el tráfico a la versión estable.
-
-## 7. Evidencias
-
-Las evidencias del repositorio deben provenir de ejecuciones reales de GitHub Actions y, si se usa Kubernetes, de un entorno real de pruebas. Los logs demostrativos incluidos sirven como referencia técnica y deben distinguirse de evidencias reales.
-
-## 8. Estructura del proyecto
+Revisar el job `build-and-test` y descargar el artifact:
 
 ```text
-TA7_Automatizacion_Proyecto/
-├── .github/workflows/ci-cd.yml
-├── docs/git-flow.md
-├── k8s/
-├── logs/
-├── scripts/
-├── src/main/java/...
-├── src/test/java/...
-├── .gitignore
-├── Jenkinsfile
-├── pom.xml
-└── README.md
+surefire-reports
 ```
+
+### Staging + acceptance tests
+
+Revisar el job `deploy-staging` y descargar:
+
+```text
+staging-and-acceptance-logs
+```
+
+### Canary + rollback
+
+Después de integrar a `main`, revisar `canary-and-rollback` y descargar:
+
+```text
+canary-rollback-logs
+```
+
+Instrucciones de evidencia: `docs/evidencias/README.md`.
 
 ## 9. Correspondencia con las actividades
 
 ### Actividad 1
 
-- Configuración Git y flujo de ramas: `docs/git-flow.md`
+- Configuración Git y GitFlow: `docs/git-flow.md`
 - Maven: `pom.xml`
-- Dependencias: JUnit 5, Selenium y TestNG
-- Pruebas unitarias: `CalculatorTest.java`
+- JUnit, Selenium y TestNG: `pom.xml`
+- Pruebas unitarias: `src/test/java/cl/iplacex/qa/CalculatorTest.java`
 
 ### Actividad 2
 
-- Pipeline: `.github/workflows/ci-cd.yml` y `Jenkinsfile`
-- Build y pruebas automatizadas: stage `build-and-test`
-- Evidencias reales: ejecuciones de GitHub Actions y reportes Surefire
+- GitHub Actions: `.github/workflows/ci-cd.yml`
+- Jenkins: `Jenkinsfile`
+- Build y pruebas: job `build-and-test`
+- Evidencias: logs reales y artifacts de GitHub Actions
 
 ### Actividad 3
 
-- Pipeline de despliegue: stages `deploy-staging`, `Acceptance Tests` y `Canary Deploy`
-- Scripts: `scripts/`
-- Kubernetes: `k8s/`
+- Acceptance tests: `HealthCheckIT.java`
+- Staging: `scripts/deploy-staging.sh`
+- Canary: `scripts/deploy-canary.sh`
 - Rollback: `scripts/rollback.sh`
+- Kubernetes: `k8s/`
+- Evidencia: jobs y artifacts del workflow
 
-## 10. Nota para la entrega
+## 10. Estructura principal
 
-Antes de entregar, verifica que GitHub Actions muestre build y pruebas exitosas. Si se dispone de un ambiente Kubernetes, ejecutar los manifiestos y capturar `kubectl get pods`, health checks y rollback.
+```text
+.
+├── .github/workflows/ci-cd.yml
+├── docs/
+│   ├── evidencias/README.md
+│   └── git-flow.md
+├── k8s/
+├── scripts/
+├── src/main/java/cl/iplacex/qa/
+├── src/test/java/cl/iplacex/qa/
+├── .gitignore
+├── Jenkinsfile
+├── pom.xml
+└── README.md
+```
