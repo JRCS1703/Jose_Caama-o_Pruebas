@@ -1,4 +1,4 @@
-# TA_7 — Automatización de Pruebas
+# Examen — Automatización de Pruebas
 
 **Estudiante:** José Caamaño Sepúlveda  
 **Asignatura:** Automatización de Pruebas  
